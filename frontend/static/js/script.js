@@ -578,16 +578,36 @@ async function handleProcessDocument() {
                     return val;
                 }
                 
-                // Helper function: Check if array contains objects with {type, value} structure
-                function isItemsArray(arr) {
-                    if (!Array.isArray(arr) || arr.length === 0) return false;
-                    // Check if first item is an object with nested {type, value} properties
-                    const firstItem = arr[0];
-                    if (typeof firstItem !== 'object') return false;
-                    const keys = Object.keys(firstItem);
-                    if (keys.length === 0) return false;
-                    // Check if any property has {type, value} structure
-                    return keys.some(k => firstItem[k] && typeof firstItem[k] === 'object' && 'value' in firstItem[k]);
+                // Helper function: Check if value is a nested array of objects (items, line items, etc.)
+                function isNestedArray(val) {
+                    // First extract value if wrapped
+                    let checkVal = val;
+                    if (val && typeof val === 'object' && !Array.isArray(val) && 'value' in val) {
+                        checkVal = val.value;
+                    }
+                    if (!Array.isArray(checkVal) || checkVal.length === 0) return false;
+                    // Check if first item is an object (not primitive)
+                    const firstItem = checkVal[0];
+                    return firstItem !== null && typeof firstItem === 'object';
+                }
+                
+                // Helper function: Get array from potentially wrapped value
+                function getNestedArray(val) {
+                    if (Array.isArray(val)) return val;
+                    if (val && typeof val === 'object' && 'value' in val && Array.isArray(val.value)) {
+                        return val.value;
+                    }
+                    return null;
+                }
+                
+                // Helper function: Check if value is a nested object (not a simple {type, value} wrapper)
+                function isNestedObject(val) {
+                    if (!val || typeof val !== 'object' || Array.isArray(val)) return false;
+                    // If it only has 'type' and 'value' keys, it's a wrapper, not nested
+                    const keys = Object.keys(val);
+                    if (keys.length <= 2 && keys.includes('value')) return false;
+                    // If it has multiple properties or properties other than type/value, it's nested
+                    return keys.length > 0;
                 }
                 
                 // Helper function: Create a simple key-value table
@@ -622,8 +642,14 @@ async function handleProcessDocument() {
                     for (const [key, rawValue] of Object.entries(data)) {
                         const value = extractValue(rawValue);
                         
-                        // Skip arrays - they'll be handled separately
-                        if (Array.isArray(rawValue) && isItemsArray(rawValue)) {
+                        // Skip nested arrays - they'll be rendered as separate tables
+                        const nestedArr = getNestedArray(rawValue) || getNestedArray(value);
+                        if (nestedArr && nestedArr.length > 0 && typeof nestedArr[0] === 'object') {
+                            continue;
+                        }
+                        
+                        // Skip nested objects - they'll be rendered as separate tables
+                        if (isNestedObject(value)) {
                             continue;
                         }
                         
@@ -638,12 +664,29 @@ async function handleProcessDocument() {
                             tdValue.textContent = '-';
                             tdValue.style.color = '#999';
                         } else if (Array.isArray(value)) {
-                            tdValue.textContent = value.join(', ');
+                            // Check if it's an array of objects (nested) - show indicator
+                            if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
+                                tdValue.textContent = `[${value.length} item(s) - see table below]`;
+                                tdValue.style.color = '#667eea';
+                                tdValue.style.fontStyle = 'italic';
+                            } else {
+                                // Simple array of primitives
+                                tdValue.textContent = value.map(v => String(v)).join(', ');
+                            }
                         } else if (typeof value === 'object') {
-                            tdValue.textContent = JSON.stringify(value, null, 2);
-                            tdValue.style.whiteSpace = 'pre-wrap';
-                            tdValue.style.fontFamily = 'monospace';
-                            tdValue.style.fontSize = '12px';
+                            // Check if it's a simple wrapper or complex object
+                            const keys = Object.keys(value);
+                            if (keys.length > 3) {
+                                tdValue.textContent = `[Nested object - see table below]`;
+                                tdValue.style.color = '#764ba2';
+                                tdValue.style.fontStyle = 'italic';
+                            } else {
+                                // Simple object - show as JSON
+                                tdValue.textContent = JSON.stringify(value, null, 2);
+                                tdValue.style.whiteSpace = 'pre-wrap';
+                                tdValue.style.fontFamily = 'monospace';
+                                tdValue.style.fontSize = '12px';
+                            }
                         } else {
                             tdValue.textContent = String(value);
                         }
@@ -658,24 +701,35 @@ async function handleProcessDocument() {
                     return wrapper;
                 }
                 
-                // Helper function: Create items table (for line items)
+                // Helper function: Create items table (for line items, nested arrays)
                 function createItemsTable(items, title) {
                     const wrapper = document.createElement('div');
                     wrapper.style.marginTop = '20px';
+                    wrapper.style.marginBottom = '20px';
                     
                     const h4 = document.createElement('h4');
                     h4.textContent = title || 'Items';
                     h4.style.marginBottom = '10px';
                     h4.style.color = '#333';
+                    h4.style.borderBottom = '2px solid #667eea';
+                    h4.style.paddingBottom = '5px';
                     wrapper.appendChild(h4);
                     
                     const table = document.createElement('table');
                     table.className = 'results-table';
+                    table.style.width = '100%';
                     
-                    // Get all unique keys from items
+                    // Get all unique keys from items, extracting from nested structures
                     const allKeys = new Set();
                     items.forEach(item => {
-                        Object.keys(item).forEach(k => allKeys.add(k));
+                        if (item && typeof item === 'object') {
+                            Object.keys(item).forEach(k => {
+                                // Skip 'type' key if it's just a type indicator
+                                if (k !== 'type' || typeof item[k] !== 'string') {
+                                    allKeys.add(k);
+                                }
+                            });
+                        }
                     });
                     const columns = Array.from(allKeys);
                     
@@ -685,6 +739,10 @@ async function handleProcessDocument() {
                     columns.forEach(col => {
                         const th = document.createElement('th');
                         th.textContent = col;
+                        th.style.background = '#667eea';
+                        th.style.color = 'white';
+                        th.style.padding = '10px';
+                        th.style.textAlign = 'left';
                         headerRow.appendChild(th);
                     });
                     thead.appendChild(headerRow);
@@ -692,21 +750,110 @@ async function handleProcessDocument() {
                     
                     // Create body
                     const tbody = document.createElement('tbody');
-                    items.forEach(item => {
+                    items.forEach((item, idx) => {
                         const row = document.createElement('tr');
+                        row.style.background = idx % 2 === 0 ? '#f9f9f9' : '#ffffff';
+                        
                         columns.forEach(col => {
                             const td = document.createElement('td');
+                            td.style.padding = '10px';
+                            td.style.borderBottom = '1px solid #eee';
+                            
                             const rawValue = item[col];
                             const value = extractValue(rawValue);
                             
                             if (value === null || value === undefined) {
                                 td.textContent = '-';
                                 td.style.color = '#999';
+                            } else if (Array.isArray(value)) {
+                                td.textContent = value.join(', ');
+                            } else if (typeof value === 'object') {
+                                // Nested object in items - show as formatted JSON
+                                td.textContent = JSON.stringify(value, null, 2);
+                                td.style.whiteSpace = 'pre-wrap';
+                                td.style.fontFamily = 'monospace';
+                                td.style.fontSize = '11px';
                             } else {
                                 td.textContent = String(value);
                             }
                             row.appendChild(td);
                         });
+                        tbody.appendChild(row);
+                    });
+                    
+                    table.appendChild(tbody);
+                    wrapper.appendChild(table);
+                    return wrapper;
+                }
+                
+                // Helper function: Create a nested object table
+                function createNestedObjectTable(obj, title) {
+                    const wrapper = document.createElement('div');
+                    wrapper.style.marginTop = '20px';
+                    wrapper.style.marginBottom = '20px';
+                    
+                    const h4 = document.createElement('h4');
+                    h4.textContent = title || 'Details';
+                    h4.style.marginBottom = '10px';
+                    h4.style.color = '#333';
+                    h4.style.borderBottom = '2px solid #764ba2';
+                    h4.style.paddingBottom = '5px';
+                    wrapper.appendChild(h4);
+                    
+                    const table = document.createElement('table');
+                    table.className = 'results-table';
+                    table.style.width = '100%';
+                    
+                    const thead = document.createElement('thead');
+                    const headerRow = document.createElement('tr');
+                    const thKey = document.createElement('th');
+                    thKey.textContent = 'Field';
+                    thKey.style.background = '#764ba2';
+                    thKey.style.color = 'white';
+                    thKey.style.padding = '10px';
+                    const thValue = document.createElement('th');
+                    thValue.textContent = 'Value';
+                    thValue.style.background = '#764ba2';
+                    thValue.style.color = 'white';
+                    thValue.style.padding = '10px';
+                    headerRow.appendChild(thKey);
+                    headerRow.appendChild(thValue);
+                    thead.appendChild(headerRow);
+                    table.appendChild(thead);
+                    
+                    const tbody = document.createElement('tbody');
+                    
+                    Object.entries(obj).forEach(([key, rawValue], idx) => {
+                        const value = extractValue(rawValue);
+                        const row = document.createElement('tr');
+                        row.style.background = idx % 2 === 0 ? '#f9f9f9' : '#ffffff';
+                        
+                        const tdKey = document.createElement('td');
+                        tdKey.textContent = key;
+                        tdKey.style.fontWeight = '500';
+                        tdKey.style.padding = '10px';
+                        tdKey.style.borderBottom = '1px solid #eee';
+                        
+                        const tdValue = document.createElement('td');
+                        tdValue.style.padding = '10px';
+                        tdValue.style.borderBottom = '1px solid #eee';
+                        
+                        if (value === null || value === undefined) {
+                            tdValue.textContent = '-';
+                            tdValue.style.color = '#999';
+                        } else if (Array.isArray(value)) {
+                            tdValue.textContent = value.join(', ');
+                        } else if (typeof value === 'object') {
+                            tdValue.textContent = JSON.stringify(value, null, 2);
+                            tdValue.style.whiteSpace = 'pre-wrap';
+                            tdValue.style.fontFamily = 'monospace';
+                            tdValue.style.fontSize = '11px';
+                        } else {
+                            tdValue.textContent = String(value);
+                        }
+                        
+                        row.appendChild(tdKey);
+                        row.appendChild(tdValue);
                         tbody.appendChild(row);
                     });
                     
@@ -723,24 +870,33 @@ async function handleProcessDocument() {
                         resultContainer.innerHTML = '<p style="color: #666; text-align: center;">No data extracted from document.</p>';
                     } else {
                         // Create main table for simple fields
-                        const mainTable = createKeyValueTable(displayData, null);
+                        const mainTable = createKeyValueTable(displayData, 'Extracted Data');
                         resultContainer.appendChild(mainTable);
                         
-                        // Create separate tables for arrays (Items, etc.)
+                        // Create separate tables for nested arrays and objects
                         for (const key of keys) {
                             const rawValue = displayData[key];
-                            if (Array.isArray(rawValue) && isItemsArray(rawValue)) {
-                                const itemsTable = createItemsTable(rawValue, key);
+                            const value = extractValue(rawValue);
+                            
+                            // Handle nested arrays (Items, line items, etc.)
+                            const nestedArr = getNestedArray(rawValue) || getNestedArray(value);
+                            if (nestedArr && nestedArr.length > 0 && typeof nestedArr[0] === 'object') {
+                                const itemsTable = createItemsTable(nestedArr, key);
                                 resultContainer.appendChild(itemsTable);
+                            }
+                            // Handle nested objects
+                            else if (isNestedObject(value)) {
+                                const nestedTable = createNestedObjectTable(value, key);
+                                resultContainer.appendChild(nestedTable);
                             }
                         }
                     }
                 } else if (Array.isArray(displayData)) {
-                    if (isItemsArray(displayData)) {
+                    if (isNestedArray(displayData)) {
                         const itemsTable = createItemsTable(displayData, 'Items');
                         resultContainer.appendChild(itemsTable);
                     } else {
-                        // Simple array
+                        // Simple array of primitives
                         const pre = document.createElement('pre');
                         pre.textContent = JSON.stringify(displayData, null, 2);
                         pre.style.margin = '0';
