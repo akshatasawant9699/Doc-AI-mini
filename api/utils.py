@@ -7,7 +7,7 @@ from datetime import datetime
 LOGIN_URL = os.environ.get("LOGIN_URL", "login.salesforce.com")
 CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
-API_VERSION = os.environ.get("API_VERSION", "v60.0")
+API_VERSION = os.environ.get("API_VERSION", "v65.0")
 DEFAULT_ML_MODEL = os.environ.get("DEFAULT_ML_MODEL", "llmgateway__VertexAIGemini20Flash001")
 
 def normalize_login_url(login_url):

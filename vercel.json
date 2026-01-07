@@ -16,8 +16,16 @@
   ],
   "routes": [
     {
+      "src": "/auth/callback",
+      "dest": "/api/callback.py"
+    },
+    {
       "src": "/api/oauth/callback",
       "dest": "/api/auth.py"
+    },
+    {
+      "src": "/api/test-connection",
+      "dest": "/api/test-connection.py"
     },
     {
       "src": "/api/generate-schema",
