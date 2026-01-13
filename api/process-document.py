@@ -75,7 +75,8 @@ class handler(BaseHTTPRequestHandler):
                 return
             
             # Prepare Document AI request
-            url = f"{instance_url}/services/data/{api_version}/ssot/document-processing/actions/extract-data"
+            # Include query params for confidence scores and disable HTML encoding
+            url = f"{instance_url}/services/data/{api_version}/ssot/document-processing/actions/extract-data?htmlEncode=false&extractDataWithConfidenceScore=true"
             
             # Check if idpConfigurationIdOrName is provided
             idp_config = idp_config_name

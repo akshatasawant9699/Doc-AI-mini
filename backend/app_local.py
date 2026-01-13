@@ -552,8 +552,8 @@ def api_process_document():
             }), 400
         
         # Prepare Document AI request
-        # URL without query params as shown in Postman
-        url = f"{instance_url}/services/data/{api_version}/ssot/document-processing/actions/extract-data"
+        # Include query params for confidence scores and disable HTML encoding
+        url = f"{instance_url}/services/data/{api_version}/ssot/document-processing/actions/extract-data?htmlEncode=false&extractDataWithConfidenceScore=true"
         
         logger.info(f"=== Document AI Request ===")
         logger.info(f"URL: {url}")

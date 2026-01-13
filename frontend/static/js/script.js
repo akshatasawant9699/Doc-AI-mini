@@ -567,7 +567,7 @@ async function handleProcessDocument() {
                     }
                 }
                 
-                // Helper function: Extract value from {type, value} structure
+                // Helper function: Extract value from {type, value, confidence} structure
                 function extractValue(val) {
                     if (val && typeof val === 'object' && !Array.isArray(val)) {
                         // Check if it has 'value' property (Salesforce Document AI format)
@@ -576,6 +576,50 @@ async function handleProcessDocument() {
                         }
                     }
                     return val;
+                }
+                
+                // Helper function: Extract confidence score from {value, confidence} structure
+                function extractConfidence(val) {
+                    if (val && typeof val === 'object' && !Array.isArray(val)) {
+                        if ('confidence' in val) {
+                            return val.confidence;
+                        }
+                    }
+                    return null;
+                }
+                
+                // Helper function: Create confidence badge
+                function createConfidenceBadge(confidence) {
+                    if (confidence === null || confidence === undefined) return null;
+                    
+                    const badge = document.createElement('span');
+                    badge.className = 'confidence-badge';
+                    const percent = Math.round(confidence * 100);
+                    badge.textContent = `${percent}%`;
+                    
+                    // Color code based on confidence level
+                    if (confidence >= 0.9) {
+                        badge.style.background = '#e8f5e9';
+                        badge.style.color = '#2e7d32';
+                        badge.style.border = '1px solid #a5d6a7';
+                    } else if (confidence >= 0.7) {
+                        badge.style.background = '#fff8e1';
+                        badge.style.color = '#f57f17';
+                        badge.style.border = '1px solid #ffcc80';
+                    } else {
+                        badge.style.background = '#ffebee';
+                        badge.style.color = '#c62828';
+                        badge.style.border = '1px solid #ef9a9a';
+                    }
+                    
+                    badge.style.padding = '2px 6px';
+                    badge.style.borderRadius = '4px';
+                    badge.style.fontSize = '11px';
+                    badge.style.fontWeight = '500';
+                    badge.style.marginLeft = '8px';
+                    badge.title = `Confidence: ${(confidence * 100).toFixed(1)}%`;
+                    
+                    return badge;
                 }
                 
                 // Helper function: Check if value is a nested array of objects (items, line items, etc.)
@@ -632,8 +676,13 @@ async function handleProcessDocument() {
                     thKey.textContent = 'Field';
                     const thValue = document.createElement('th');
                     thValue.textContent = 'Value';
+                    const thConfidence = document.createElement('th');
+                    thConfidence.textContent = 'Confidence';
+                    thConfidence.style.width = '100px';
+                    thConfidence.style.textAlign = 'center';
                     headerRow.appendChild(thKey);
                     headerRow.appendChild(thValue);
+                    headerRow.appendChild(thConfidence);
                     thead.appendChild(headerRow);
                     table.appendChild(thead);
                     
@@ -641,6 +690,7 @@ async function handleProcessDocument() {
                     
                     for (const [key, rawValue] of Object.entries(data)) {
                         const value = extractValue(rawValue);
+                        const confidence = extractConfidence(rawValue);
                         
                         // Skip nested arrays - they'll be rendered as separate tables
                         const nestedArr = getNestedArray(rawValue) || getNestedArray(value);
@@ -656,6 +706,8 @@ async function handleProcessDocument() {
                         const row = document.createElement('tr');
                         const tdKey = document.createElement('td');
                         const tdValue = document.createElement('td');
+                        const tdConfidence = document.createElement('td');
+                        tdConfidence.style.textAlign = 'center';
                         
                         tdKey.textContent = key;
                         tdKey.style.fontWeight = '500';
@@ -691,8 +743,18 @@ async function handleProcessDocument() {
                             tdValue.textContent = String(value);
                         }
                         
+                        // Add confidence badge
+                        const badge = createConfidenceBadge(confidence);
+                        if (badge) {
+                            tdConfidence.appendChild(badge);
+                        } else {
+                            tdConfidence.textContent = '-';
+                            tdConfidence.style.color = '#999';
+                        }
+                        
                         row.appendChild(tdKey);
                         row.appendChild(tdValue);
+                        row.appendChild(tdConfidence);
                         tbody.appendChild(row);
                     }
                     
@@ -721,12 +783,17 @@ async function handleProcessDocument() {
                     
                     // Get all unique keys from items, extracting from nested structures
                     const allKeys = new Set();
+                    let hasConfidence = false;
                     items.forEach(item => {
                         if (item && typeof item === 'object') {
                             Object.keys(item).forEach(k => {
                                 // Skip 'type' key if it's just a type indicator
                                 if (k !== 'type' || typeof item[k] !== 'string') {
                                     allKeys.add(k);
+                                }
+                                // Check if any field has confidence
+                                if (item[k] && typeof item[k] === 'object' && 'confidence' in item[k]) {
+                                    hasConfidence = true;
                                 }
                             });
                         }
@@ -761,6 +828,7 @@ async function handleProcessDocument() {
                             
                             const rawValue = item[col];
                             const value = extractValue(rawValue);
+                            const confidence = extractConfidence(rawValue);
                             
                             if (value === null || value === undefined) {
                                 td.textContent = '-';
@@ -774,7 +842,16 @@ async function handleProcessDocument() {
                                 td.style.fontFamily = 'monospace';
                                 td.style.fontSize = '11px';
                             } else {
-                                td.textContent = String(value);
+                                // Create a span for value to allow badge beside it
+                                const valueSpan = document.createElement('span');
+                                valueSpan.textContent = String(value);
+                                td.appendChild(valueSpan);
+                                
+                                // Add confidence badge inline if present
+                                const badge = createConfidenceBadge(confidence);
+                                if (badge) {
+                                    td.appendChild(badge);
+                                }
                             }
                             row.appendChild(td);
                         });
@@ -816,8 +893,16 @@ async function handleProcessDocument() {
                     thValue.style.background = '#764ba2';
                     thValue.style.color = 'white';
                     thValue.style.padding = '10px';
+                    const thConfidence = document.createElement('th');
+                    thConfidence.textContent = 'Confidence';
+                    thConfidence.style.background = '#764ba2';
+                    thConfidence.style.color = 'white';
+                    thConfidence.style.padding = '10px';
+                    thConfidence.style.width = '100px';
+                    thConfidence.style.textAlign = 'center';
                     headerRow.appendChild(thKey);
                     headerRow.appendChild(thValue);
+                    headerRow.appendChild(thConfidence);
                     thead.appendChild(headerRow);
                     table.appendChild(thead);
                     
@@ -825,6 +910,7 @@ async function handleProcessDocument() {
                     
                     Object.entries(obj).forEach(([key, rawValue], idx) => {
                         const value = extractValue(rawValue);
+                        const confidence = extractConfidence(rawValue);
                         const row = document.createElement('tr');
                         row.style.background = idx % 2 === 0 ? '#f9f9f9' : '#ffffff';
                         
@@ -837,6 +923,11 @@ async function handleProcessDocument() {
                         const tdValue = document.createElement('td');
                         tdValue.style.padding = '10px';
                         tdValue.style.borderBottom = '1px solid #eee';
+                        
+                        const tdConfidence = document.createElement('td');
+                        tdConfidence.style.padding = '10px';
+                        tdConfidence.style.borderBottom = '1px solid #eee';
+                        tdConfidence.style.textAlign = 'center';
                         
                         if (value === null || value === undefined) {
                             tdValue.textContent = '-';
@@ -852,8 +943,18 @@ async function handleProcessDocument() {
                             tdValue.textContent = String(value);
                         }
                         
+                        // Add confidence badge
+                        const badge = createConfidenceBadge(confidence);
+                        if (badge) {
+                            tdConfidence.appendChild(badge);
+                        } else {
+                            tdConfidence.textContent = '-';
+                            tdConfidence.style.color = '#999';
+                        }
+                        
                         row.appendChild(tdKey);
                         row.appendChild(tdValue);
+                        row.appendChild(tdConfidence);
                         tbody.appendChild(row);
                     });
                     
