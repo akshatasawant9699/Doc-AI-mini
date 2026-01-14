@@ -551,610 +551,221 @@ async function handleProcessDocument() {
                 // Clear previous content
                 resultContainer.innerHTML = '';
                 
-                // Process the extracted data
-                let displayData = extractedData;
-                
                 // Log raw data for debugging
-                console.log('Raw extracted data:', JSON.stringify(extractedData, null, 2).substring(0, 2000));
+                console.log('Raw extracted data:', JSON.stringify(extractedData, null, 2).substring(0, 3000));
                 
-                // Helper function: Extract value from {type, value, confidence} structure
-                function extractValue(val) {
-                    if (val && typeof val === 'object' && !Array.isArray(val)) {
-                        // Check if it has 'value' property (Salesforce Document AI format)
-                        if ('value' in val) {
-                            return val.value;
-                        }
-                    }
+                // Deep extract value - handles nested {type, value} wrappers
+                function getValue(val) {
+                    if (val === null || val === undefined) return null;
+                    if (typeof val !== 'object') return val;
+                    if (Array.isArray(val)) return val;
+                    if ('value' in val) return val.value;
                     return val;
                 }
                 
-                // Helper function: Extract confidence score from {value, confidence_score} or {value, confidence} structure
-                function extractConfidence(val) {
+                // Extract confidence score
+                function getConf(val) {
                     if (val && typeof val === 'object' && !Array.isArray(val)) {
-                        // Check for confidence_score first (Salesforce Document AI format)
-                        if ('confidence_score' in val) {
-                            return val.confidence_score;
-                        }
-                        // Fallback to confidence
-                        if ('confidence' in val) {
-                            return val.confidence;
-                        }
+                        if ('confidence_score' in val) return val.confidence_score;
+                        if ('confidence' in val) return val.confidence;
                     }
                     return null;
                 }
                 
-                // Helper function: Create confidence badge
-                function createConfidenceBadge(confidence) {
-                    if (confidence === null || confidence === undefined) return null;
-                    
-                    const badge = document.createElement('span');
-                    badge.className = 'confidence-badge';
-                    const percent = Math.round(confidence * 100);
-                    badge.textContent = `${percent}%`;
-                    
-                    // Color code based on confidence level
-                    if (confidence >= 0.9) {
-                        badge.style.background = '#e8f5e9';
-                        badge.style.color = '#2e7d32';
-                        badge.style.border = '1px solid #a5d6a7';
-                    } else if (confidence >= 0.7) {
-                        badge.style.background = '#fff8e1';
-                        badge.style.color = '#f57f17';
-                        badge.style.border = '1px solid #ffcc80';
-                    } else {
-                        badge.style.background = '#ffebee';
-                        badge.style.color = '#c62828';
-                        badge.style.border = '1px solid #ef9a9a';
-                    }
-                    
-                    badge.style.padding = '2px 6px';
-                    badge.style.borderRadius = '4px';
-                    badge.style.fontSize = '11px';
-                    badge.style.fontWeight = '500';
-                    badge.style.marginLeft = '8px';
-                    badge.title = `Confidence: ${(confidence * 100).toFixed(1)}%`;
-                    
-                    return badge;
+                // Create confidence badge HTML
+                function badge(conf) {
+                    if (conf === null || conf === undefined) return '<span style="color:#999;">-</span>';
+                    const pct = Math.round(conf * 100);
+                    let c, bg, bd;
+                    if (conf >= 0.9) { c = '#2e7d32'; bg = '#e8f5e9'; bd = '#a5d6a7'; }
+                    else if (conf >= 0.7) { c = '#f57f17'; bg = '#fff8e1'; bd = '#ffcc80'; }
+                    else { c = '#c62828'; bg = '#ffebee'; bd = '#ef9a9a'; }
+                    return `<span style="background:${bg};color:${c};border:1px solid ${bd};padding:2px 8px;border-radius:4px;font-size:12px;font-weight:500;">${pct}%</span>`;
                 }
                 
-                // Helper function: Check if value is a nested array of objects (items, line items, etc.)
-                function isNestedArray(val) {
-                    // First extract value if wrapped
-                    let checkVal = val;
-                    if (val && typeof val === 'object' && !Array.isArray(val) && 'value' in val) {
-                        checkVal = val.value;
-                    }
-                    if (!Array.isArray(checkVal) || checkVal.length === 0) return false;
-                    // Check if first item is an object (not primitive)
-                    const firstItem = checkVal[0];
-                    return firstItem !== null && typeof firstItem === 'object';
+                // Format field name
+                function formatKey(key) {
+                    return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                 }
                 
-                // Helper function: Get array from potentially wrapped value
-                function getNestedArray(val) {
-                    if (Array.isArray(val)) return val;
-                    if (val && typeof val === 'object' && 'value' in val && Array.isArray(val.value)) {
-                        return val.value;
-                    }
-                    return null;
-                }
-                
-                // Helper function: Check if value is a nested object (not a simple {type, value} wrapper)
-                function isNestedObject(val) {
-                    if (!val || typeof val !== 'object' || Array.isArray(val)) return false;
-                    // If it only has 'type' and 'value' keys, it's a wrapper, not nested
-                    const keys = Object.keys(val);
-                    if (keys.length <= 2 && keys.includes('value')) return false;
-                    // If it has multiple properties or properties other than type/value, it's nested
-                    return keys.length > 0;
-                }
-                
-                // Helper function: Create a simple key-value table
-                function createKeyValueTable(data, title) {
-                    const wrapper = document.createElement('div');
-                    wrapper.style.marginBottom = '20px';
-                    
-                    if (title) {
-                        const h4 = document.createElement('h4');
-                        h4.textContent = title;
-                        h4.style.marginBottom = '10px';
-                        h4.style.color = '#333';
-                        wrapper.appendChild(h4);
+                // Build a single unified table for all invoices
+                function buildUnifiedTable(data) {
+                    // Get invoices array from the data
+                    let invoices = null;
+                    if (data.invoices) {
+                        invoices = getValue(data.invoices);
+                    } else if (data.documents) {
+                        invoices = getValue(data.documents);
                     }
                     
-                    const table = document.createElement('table');
-                    table.className = 'results-table';
+                    if (!invoices || !Array.isArray(invoices) || invoices.length === 0) {
+                        // Try to display as single document
+                        return buildSingleDocTable(data);
+                    }
                     
-                    const thead = document.createElement('thead');
-                    const headerRow = document.createElement('tr');
-                    const thKey = document.createElement('th');
-                    thKey.textContent = 'Field';
-                    const thValue = document.createElement('th');
-                    thValue.textContent = 'Value';
-                    const thConfidence = document.createElement('th');
-                    thConfidence.textContent = 'Confidence';
-                    thConfidence.style.width = '100px';
-                    thConfidence.style.textAlign = 'center';
-                    headerRow.appendChild(thKey);
-                    headerRow.appendChild(thValue);
-                    headerRow.appendChild(thConfidence);
-                    thead.appendChild(headerRow);
-                    table.appendChild(thead);
+                    let html = `<div style="background:#e3f2fd;padding:15px 20px;border-radius:8px;margin-bottom:20px;">
+                        <strong>Extracted ${invoices.length} document(s)</strong> from the combined file.
+                    </div>`;
                     
-                    const tbody = document.createElement('tbody');
-                    
-                    for (const [key, rawValue] of Object.entries(data)) {
-                        const value = extractValue(rawValue);
-                        const confidence = extractConfidence(rawValue);
+                    // Create a table for each invoice
+                    invoices.forEach((invoice, docIdx) => {
+                        const invNum = getValue(invoice.invoice_number) || `Document ${docIdx + 1}`;
+                        const docType = getValue(invoice.document_type) || 'Invoice';
                         
-                        // Skip nested arrays - they'll be rendered as separate tables
-                        const nestedArr = getNestedArray(rawValue) || getNestedArray(value);
-                        if (nestedArr && nestedArr.length > 0 && typeof nestedArr[0] === 'object') {
-                            continue;
-                        }
+                        html += `<div style="border:1px solid #ddd;border-radius:8px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:15px 20px;font-weight:600;font-size:16px;">
+                                ${docType} #${docIdx + 1}: ${invNum}
+                            </div>
+                            <div style="padding:20px;">
+                                <table class="results-table" style="width:100%;border-collapse:collapse;">
+                                    <thead>
+                                        <tr>
+                                            <th style="background:#f5f5f5;padding:10px;text-align:left;border-bottom:2px solid #ddd;font-weight:600;width:30%;">Field</th>
+                                            <th style="background:#f5f5f5;padding:10px;text-align:left;border-bottom:2px solid #ddd;font-weight:600;">Value</th>
+                                            <th style="background:#f5f5f5;padding:10px;text-align:center;border-bottom:2px solid #ddd;font-weight:600;width:100px;">Confidence</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
                         
-                        // Skip nested objects - they'll be rendered as separate tables
-                        if (isNestedObject(value)) {
-                            continue;
-                        }
+                        let lineItems = null;
+                        let rowIdx = 0;
                         
-                        const row = document.createElement('tr');
-                        const tdKey = document.createElement('td');
-                        const tdValue = document.createElement('td');
-                        const tdConfidence = document.createElement('td');
-                        tdConfidence.style.textAlign = 'center';
-                        
-                        tdKey.textContent = key;
-                        tdKey.style.fontWeight = '500';
-                        
-                        if (value === null || value === undefined) {
-                            tdValue.textContent = '-';
-                            tdValue.style.color = '#999';
-                        } else if (Array.isArray(value)) {
-                            // Check if it's an array of objects (nested) - show indicator
-                            if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
-                                tdValue.textContent = `[${value.length} item(s) - see table below]`;
-                                tdValue.style.color = '#667eea';
-                                tdValue.style.fontStyle = 'italic';
-                            } else {
-                                // Simple array of primitives
-                                tdValue.textContent = value.map(v => String(v)).join(', ');
+                        // Process each field in the invoice
+                        Object.entries(invoice).forEach(([key, rawVal]) => {
+                            // Handle line_items separately
+                            if (key === 'line_items') {
+                                lineItems = getValue(rawVal);
+                                return;
                             }
-                        } else if (typeof value === 'object') {
-                            // Check if it's a simple wrapper or complex object
-                            const keys = Object.keys(value);
-                            if (keys.length > 3) {
-                                tdValue.textContent = `[Nested object - see table below]`;
-                                tdValue.style.color = '#764ba2';
-                                tdValue.style.fontStyle = 'italic';
-                            } else {
-                                // Simple object - show as JSON
-                                tdValue.textContent = JSON.stringify(value, null, 2);
-                                tdValue.style.whiteSpace = 'pre-wrap';
-                                tdValue.style.fontFamily = 'monospace';
-                                tdValue.style.fontSize = '12px';
+                            
+                            const val = getValue(rawVal);
+                            const conf = getConf(rawVal);
+                            
+                            // Skip null/empty values
+                            if (val === null || val === 'null' || val === undefined || val === '') return;
+                            
+                            const bgColor = rowIdx % 2 === 0 ? '#fafafa' : '#ffffff';
+                            rowIdx++;
+                            
+                            let displayVal = val;
+                            if (typeof val === 'object') {
+                                displayVal = JSON.stringify(val);
                             }
-                        } else {
-                            tdValue.textContent = String(value);
-                        }
+                            
+                            html += `<tr style="background:${bgColor};">
+                                <td style="padding:10px;border-bottom:1px solid #eee;font-weight:500;color:#333;">${formatKey(key)}</td>
+                                <td style="padding:10px;border-bottom:1px solid #eee;">${displayVal}</td>
+                                <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">${badge(conf)}</td>
+                            </tr>`;
+                        });
                         
-                        // Add confidence badge
-                        const badge = createConfidenceBadge(confidence);
-                        if (badge) {
-                            tdConfidence.appendChild(badge);
-                        } else {
-                            tdConfidence.textContent = '-';
-                            tdConfidence.style.color = '#999';
-                        }
+                        html += `</tbody></table>`;
                         
-                        row.appendChild(tdKey);
-                        row.appendChild(tdValue);
-                        row.appendChild(tdConfidence);
-                        tbody.appendChild(row);
-                    }
-                    
-                    table.appendChild(tbody);
-                    wrapper.appendChild(table);
-                    return wrapper;
-                }
-                
-                // Helper function: Create items table (for line items, nested arrays)
-                function createItemsTable(items, title) {
-                    const wrapper = document.createElement('div');
-                    wrapper.style.marginTop = '20px';
-                    wrapper.style.marginBottom = '20px';
-                    
-                    const h4 = document.createElement('h4');
-                    h4.textContent = title || 'Items';
-                    h4.style.marginBottom = '10px';
-                    h4.style.color = '#333';
-                    h4.style.borderBottom = '2px solid #667eea';
-                    h4.style.paddingBottom = '5px';
-                    wrapper.appendChild(h4);
-                    
-                    const table = document.createElement('table');
-                    table.className = 'results-table';
-                    table.style.width = '100%';
-                    
-                    // Get all unique keys from items, extracting from nested structures
-                    const allKeys = new Set();
-                    let hasConfidence = false;
-                    items.forEach(item => {
-                        if (item && typeof item === 'object') {
-                            Object.keys(item).forEach(k => {
-                                // Skip 'type' key if it's just a type indicator
-                                if (k !== 'type' || typeof item[k] !== 'string') {
-                                    allKeys.add(k);
-                                }
-                                // Check if any field has confidence
-                                if (item[k] && typeof item[k] === 'object' && 'confidence' in item[k]) {
-                                    hasConfidence = true;
-                                }
+                        // Add line items if present
+                        if (lineItems && Array.isArray(lineItems) && lineItems.length > 0) {
+                            html += `<div style="margin-top:20px;">
+                                <h5 style="margin:0 0 10px 0;color:#667eea;border-bottom:2px solid #667eea;padding-bottom:5px;">Line Items (${lineItems.length})</h5>
+                                <table class="results-table" style="width:100%;border-collapse:collapse;">
+                                    <thead><tr>`;
+                            
+                            // Get all keys from line items
+                            const lineItemKeys = new Set();
+                            lineItems.forEach(item => {
+                                Object.keys(item).forEach(k => {
+                                    if (k !== 'type') lineItemKeys.add(k);
+                                });
                             });
+                            
+                            Array.from(lineItemKeys).forEach(k => {
+                                html += `<th style="background:#667eea;color:white;padding:10px;text-align:left;">${formatKey(k)}</th>`;
+                            });
+                            html += `</tr></thead><tbody>`;
+                            
+                            lineItems.forEach((item, liIdx) => {
+                                const bg = liIdx % 2 === 0 ? '#f9f9f9' : '#ffffff';
+                                html += `<tr style="background:${bg};">`;
+                                Array.from(lineItemKeys).forEach(k => {
+                                    const v = getValue(item[k]);
+                                    const c = getConf(item[k]);
+                                    let displayV = v === null || v === undefined ? '-' : v;
+                                    if (typeof displayV === 'object') displayV = JSON.stringify(displayV);
+                                    html += `<td style="padding:10px;border-bottom:1px solid #eee;">${displayV} ${c !== null ? badge(c) : ''}</td>`;
+                                });
+                                html += `</tr>`;
+                            });
+                            
+                            html += `</tbody></table></div>`;
                         }
-                    });
-                    const columns = Array.from(allKeys);
-                    
-                    // Create header
-                    const thead = document.createElement('thead');
-                    const headerRow = document.createElement('tr');
-                    columns.forEach(col => {
-                        const th = document.createElement('th');
-                        th.textContent = col;
-                        th.style.background = '#667eea';
-                        th.style.color = 'white';
-                        th.style.padding = '10px';
-                        th.style.textAlign = 'left';
-                        headerRow.appendChild(th);
-                    });
-                    thead.appendChild(headerRow);
-                    table.appendChild(thead);
-                    
-                    // Create body
-                    const tbody = document.createElement('tbody');
-                    items.forEach((item, idx) => {
-                        const row = document.createElement('tr');
-                        row.style.background = idx % 2 === 0 ? '#f9f9f9' : '#ffffff';
                         
-                        columns.forEach(col => {
-                            const td = document.createElement('td');
-                            td.style.padding = '10px';
-                            td.style.borderBottom = '1px solid #eee';
-                            
-                            const rawValue = item[col];
-                            const value = extractValue(rawValue);
-                            const confidence = extractConfidence(rawValue);
-                            
-                            if (value === null || value === undefined) {
-                                td.textContent = '-';
-                                td.style.color = '#999';
-                            } else if (Array.isArray(value)) {
-                                td.textContent = value.join(', ');
-                            } else if (typeof value === 'object') {
-                                // Nested object in items - show as formatted JSON
-                                td.textContent = JSON.stringify(value, null, 2);
-                                td.style.whiteSpace = 'pre-wrap';
-                                td.style.fontFamily = 'monospace';
-                                td.style.fontSize = '11px';
-                            } else {
-                                // Create a span for value to allow badge beside it
-                                const valueSpan = document.createElement('span');
-                                valueSpan.textContent = String(value);
-                                td.appendChild(valueSpan);
-                                
-                                // Add confidence badge inline if present
-                                const badge = createConfidenceBadge(confidence);
-                                if (badge) {
-                                    td.appendChild(badge);
-                                }
-                            }
-                            row.appendChild(td);
+                        html += `</div></div>`;
+                    });
+                    
+                    // Document summary
+                    let summary = data.document_summary ? getValue(data.document_summary) : null;
+                    if (summary && typeof summary === 'object') {
+                        html += `<div style="margin-top:20px;">
+                            <h4 style="margin-bottom:10px;color:#333;border-bottom:2px solid #764ba2;padding-bottom:5px;">Document Summary</h4>
+                            <table class="results-table" style="width:100%;border-collapse:collapse;">
+                                <thead><tr>
+                                    <th style="background:#764ba2;color:white;padding:10px;">Field</th>
+                                    <th style="background:#764ba2;color:white;padding:10px;">Value</th>
+                                    <th style="background:#764ba2;color:white;padding:10px;width:100px;">Confidence</th>
+                                </tr></thead><tbody>`;
+                        Object.entries(summary).forEach(([k, rawV], idx) => {
+                            const v = getValue(rawV);
+                            const c = getConf(rawV);
+                            if (v === null || v === 'null') return;
+                            const bg = idx % 2 === 0 ? '#f9f9f9' : '#ffffff';
+                            html += `<tr style="background:${bg};">
+                                <td style="padding:10px;border-bottom:1px solid #eee;font-weight:500;">${formatKey(k)}</td>
+                                <td style="padding:10px;border-bottom:1px solid #eee;">${v}</td>
+                                <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">${badge(c)}</td>
+                            </tr>`;
                         });
-                        tbody.appendChild(row);
-                    });
+                        html += `</tbody></table></div>`;
+                    }
                     
-                    table.appendChild(tbody);
-                    wrapper.appendChild(table);
-                    return wrapper;
+                    return html;
                 }
                 
-                // Helper function: Create a nested object table
-                function createNestedObjectTable(obj, title) {
-                    const wrapper = document.createElement('div');
-                    wrapper.style.marginTop = '20px';
-                    wrapper.style.marginBottom = '20px';
+                // Build table for single document (fallback)
+                function buildSingleDocTable(data) {
+                    let html = `<table class="results-table" style="width:100%;border-collapse:collapse;">
+                        <thead><tr>
+                            <th style="background:#667eea;color:white;padding:10px;width:30%;">Field</th>
+                            <th style="background:#667eea;color:white;padding:10px;">Value</th>
+                            <th style="background:#667eea;color:white;padding:10px;width:100px;">Confidence</th>
+                        </tr></thead><tbody>`;
                     
-                    const h4 = document.createElement('h4');
-                    h4.textContent = title || 'Details';
-                    h4.style.marginBottom = '10px';
-                    h4.style.color = '#333';
-                    h4.style.borderBottom = '2px solid #764ba2';
-                    h4.style.paddingBottom = '5px';
-                    wrapper.appendChild(h4);
-                    
-                    const table = document.createElement('table');
-                    table.className = 'results-table';
-                    table.style.width = '100%';
-                    
-                    const thead = document.createElement('thead');
-                    const headerRow = document.createElement('tr');
-                    const thKey = document.createElement('th');
-                    thKey.textContent = 'Field';
-                    thKey.style.background = '#764ba2';
-                    thKey.style.color = 'white';
-                    thKey.style.padding = '10px';
-                    const thValue = document.createElement('th');
-                    thValue.textContent = 'Value';
-                    thValue.style.background = '#764ba2';
-                    thValue.style.color = 'white';
-                    thValue.style.padding = '10px';
-                    const thConfidence = document.createElement('th');
-                    thConfidence.textContent = 'Confidence';
-                    thConfidence.style.background = '#764ba2';
-                    thConfidence.style.color = 'white';
-                    thConfidence.style.padding = '10px';
-                    thConfidence.style.width = '100px';
-                    thConfidence.style.textAlign = 'center';
-                    headerRow.appendChild(thKey);
-                    headerRow.appendChild(thValue);
-                    headerRow.appendChild(thConfidence);
-                    thead.appendChild(headerRow);
-                    table.appendChild(thead);
-                    
-                    const tbody = document.createElement('tbody');
-                    
-                    Object.entries(obj).forEach(([key, rawValue], idx) => {
-                        const value = extractValue(rawValue);
-                        const confidence = extractConfidence(rawValue);
-                        const row = document.createElement('tr');
-                        row.style.background = idx % 2 === 0 ? '#f9f9f9' : '#ffffff';
+                    let rowIdx = 0;
+                    Object.entries(data).forEach(([key, rawVal]) => {
+                        const val = getValue(rawVal);
+                        const conf = getConf(rawVal);
                         
-                        const tdKey = document.createElement('td');
-                        tdKey.textContent = key;
-                        tdKey.style.fontWeight = '500';
-                        tdKey.style.padding = '10px';
-                        tdKey.style.borderBottom = '1px solid #eee';
+                        // Skip null values
+                        if (val === null || val === 'null' || val === undefined) return;
                         
-                        const tdValue = document.createElement('td');
-                        tdValue.style.padding = '10px';
-                        tdValue.style.borderBottom = '1px solid #eee';
+                        const bg = rowIdx % 2 === 0 ? '#fafafa' : '#ffffff';
+                        rowIdx++;
                         
-                        const tdConfidence = document.createElement('td');
-                        tdConfidence.style.padding = '10px';
-                        tdConfidence.style.borderBottom = '1px solid #eee';
-                        tdConfidence.style.textAlign = 'center';
-                        
-                        if (value === null || value === undefined) {
-                            tdValue.textContent = '-';
-                            tdValue.style.color = '#999';
-                        } else if (Array.isArray(value)) {
-                            tdValue.textContent = value.join(', ');
-                        } else if (typeof value === 'object') {
-                            tdValue.textContent = JSON.stringify(value, null, 2);
-                            tdValue.style.whiteSpace = 'pre-wrap';
-                            tdValue.style.fontFamily = 'monospace';
-                            tdValue.style.fontSize = '11px';
-                        } else {
-                            tdValue.textContent = String(value);
+                        let displayVal = val;
+                        if (typeof val === 'object') {
+                            displayVal = `<pre style="margin:0;white-space:pre-wrap;font-size:11px;">${JSON.stringify(val, null, 2)}</pre>`;
                         }
                         
-                        // Add confidence badge
-                        const badge = createConfidenceBadge(confidence);
-                        if (badge) {
-                            tdConfidence.appendChild(badge);
-                        } else {
-                            tdConfidence.textContent = '-';
-                            tdConfidence.style.color = '#999';
-                        }
-                        
-                        row.appendChild(tdKey);
-                        row.appendChild(tdValue);
-                        row.appendChild(tdConfidence);
-                        tbody.appendChild(row);
+                        html += `<tr style="background:${bg};">
+                            <td style="padding:10px;border-bottom:1px solid #eee;font-weight:500;">${formatKey(key)}</td>
+                            <td style="padding:10px;border-bottom:1px solid #eee;">${displayVal}</td>
+                            <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">${badge(conf)}</td>
+                        </tr>`;
                     });
                     
-                    table.appendChild(tbody);
-                    wrapper.appendChild(table);
-                    return wrapper;
+                    html += `</tbody></table>`;
+                    return html;
                 }
                 
-                // Helper function: Create invoice card with all fields
-                function createInvoiceCard(invoiceData, index) {
-                    const card = document.createElement('div');
-                    card.style.cssText = 'border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);';
-                    
-                    // Card header
-                    const header = document.createElement('div');
-                    header.style.cssText = 'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 20px; font-weight: 600; font-size: 16px;';
-                    
-                    // Get invoice number for header
-                    const invoiceNum = extractValue(invoiceData.invoice_number) || `Document ${index + 1}`;
-                    const docType = extractValue(invoiceData.document_type) || 'Invoice';
-                    header.textContent = `${docType} #${index + 1}: ${invoiceNum}`;
-                    card.appendChild(header);
-                    
-                    // Card body
-                    const body = document.createElement('div');
-                    body.style.cssText = 'padding: 20px;';
-                    
-                    // Create table for this invoice's fields
-                    const table = document.createElement('table');
-                    table.className = 'results-table';
-                    table.style.cssText = 'width: 100%; border-collapse: collapse;';
-                    
-                    const thead = document.createElement('thead');
-                    const headerRow = document.createElement('tr');
-                    ['Field', 'Value', 'Confidence'].forEach(text => {
-                        const th = document.createElement('th');
-                        th.textContent = text;
-                        th.style.cssText = 'background: #f5f5f5; padding: 10px; text-align: left; border-bottom: 2px solid #ddd; font-weight: 600;';
-                        if (text === 'Confidence') th.style.width = '100px';
-                        headerRow.appendChild(th);
-                    });
-                    thead.appendChild(headerRow);
-                    table.appendChild(thead);
-                    
-                    const tbody = document.createElement('tbody');
-                    let lineItemsData = null;
-                    
-                    // Process each field
-                    Object.entries(invoiceData).forEach(([key, rawValue], idx) => {
-                        // Check for line_items - handle separately
-                        if (key === 'line_items') {
-                            lineItemsData = getNestedArray(rawValue) || extractValue(rawValue);
-                            return;
-                        }
-                        
-                        const value = extractValue(rawValue);
-                        const confidence = extractConfidence(rawValue);
-                        
-                        // Skip null values for cleaner display
-                        if (value === null || value === 'null' || value === undefined) return;
-                        
-                        const row = document.createElement('tr');
-                        row.style.background = idx % 2 === 0 ? '#fafafa' : '#ffffff';
-                        
-                        const tdKey = document.createElement('td');
-                        tdKey.textContent = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                        tdKey.style.cssText = 'padding: 10px; border-bottom: 1px solid #eee; font-weight: 500; color: #333;';
-                        
-                        const tdValue = document.createElement('td');
-                        tdValue.style.cssText = 'padding: 10px; border-bottom: 1px solid #eee;';
-                        if (typeof value === 'object') {
-                            tdValue.textContent = JSON.stringify(value);
-                            tdValue.style.fontFamily = 'monospace';
-                            tdValue.style.fontSize = '12px';
-                        } else {
-                            tdValue.textContent = String(value);
-                        }
-                        
-                        const tdConfidence = document.createElement('td');
-                        tdConfidence.style.cssText = 'padding: 10px; border-bottom: 1px solid #eee; text-align: center;';
-                        const badge = createConfidenceBadge(confidence);
-                        if (badge) {
-                            tdConfidence.appendChild(badge);
-                        } else {
-                            tdConfidence.textContent = '-';
-                            tdConfidence.style.color = '#999';
-                        }
-                        
-                        row.appendChild(tdKey);
-                        row.appendChild(tdValue);
-                        row.appendChild(tdConfidence);
-                        tbody.appendChild(row);
-                    });
-                    
-                    table.appendChild(tbody);
-                    body.appendChild(table);
-                    
-                    // Add line items if present
-                    if (lineItemsData && Array.isArray(lineItemsData) && lineItemsData.length > 0) {
-                        const lineItemsSection = document.createElement('div');
-                        lineItemsSection.style.cssText = 'margin-top: 20px;';
-                        
-                        const lineItemsTitle = document.createElement('h5');
-                        lineItemsTitle.textContent = `Line Items (${lineItemsData.length})`;
-                        lineItemsTitle.style.cssText = 'margin: 0 0 10px 0; color: #667eea; border-bottom: 2px solid #667eea; padding-bottom: 5px;';
-                        lineItemsSection.appendChild(lineItemsTitle);
-                        
-                        const lineItemsTable = createItemsTable(lineItemsData, '');
-                        lineItemsSection.appendChild(lineItemsTable);
-                        body.appendChild(lineItemsSection);
-                    }
-                    
-                    card.appendChild(body);
-                    return card;
-                }
-                
-                // Process the data - handle invoices array structure
-                if (displayData && typeof displayData === 'object') {
-                    // Check for invoices array (the benchpress format)
-                    let invoicesArray = null;
-                    let documentSummary = null;
-                    
-                    // Try to find invoices or documents array
-                    if (displayData.invoices) {
-                        invoicesArray = getNestedArray(displayData.invoices) || extractValue(displayData.invoices);
-                    }
-                    if (displayData.documents) {
-                        invoicesArray = getNestedArray(displayData.documents) || extractValue(displayData.documents);
-                    }
-                    if (displayData.document_summary) {
-                        documentSummary = extractValue(displayData.document_summary) || displayData.document_summary;
-                    }
-                    if (displayData.extraction_summary) {
-                        documentSummary = extractValue(displayData.extraction_summary) || displayData.extraction_summary;
-                    }
-                    
-                    // If we found an invoices/documents array, display each one
-                    if (invoicesArray && Array.isArray(invoicesArray) && invoicesArray.length > 0) {
-                        // Summary header
-                        const summaryDiv = document.createElement('div');
-                        summaryDiv.style.cssText = 'background: #e3f2fd; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px;';
-                        summaryDiv.innerHTML = `<strong>Extracted ${invoicesArray.length} document(s)</strong> from the combined file.`;
-                        resultContainer.appendChild(summaryDiv);
-                        
-                        // Create a card for each invoice
-                        invoicesArray.forEach((invoice, idx) => {
-                            const card = createInvoiceCard(invoice, idx);
-                            resultContainer.appendChild(card);
-                        });
-                        
-                        // Show document summary if available
-                        if (documentSummary && typeof documentSummary === 'object') {
-                            const summaryTable = createNestedObjectTable(documentSummary, 'Document Summary');
-                            resultContainer.appendChild(summaryTable);
-                        }
-                    } else {
-                        // Fallback: show as key-value table for single document
-                        const keys = Object.keys(displayData);
-                        
-                        if (keys.length === 0) {
-                            resultContainer.innerHTML = '<p style="color: #666; text-align: center;">No data extracted from document.</p>';
-                        } else {
-                            // Create main table for simple fields
-                            const mainTable = createKeyValueTable(displayData, 'Extracted Data');
-                            resultContainer.appendChild(mainTable);
-                            
-                            // Create separate tables for nested arrays and objects
-                            for (const key of keys) {
-                                const rawValue = displayData[key];
-                                const value = extractValue(rawValue);
-                                
-                                // Handle nested arrays (Items, line items, etc.)
-                                const nestedArr = getNestedArray(rawValue) || getNestedArray(value);
-                                if (nestedArr && nestedArr.length > 0 && typeof nestedArr[0] === 'object') {
-                                    const itemsTable = createItemsTable(nestedArr, key);
-                                    resultContainer.appendChild(itemsTable);
-                                }
-                                // Handle nested objects
-                                else if (isNestedObject(value)) {
-                                    const nestedTable = createNestedObjectTable(value, key);
-                                    resultContainer.appendChild(nestedTable);
-                                }
-                            }
-                        }
-                    }
-                } else if (Array.isArray(displayData)) {
-                    if (isNestedArray(displayData)) {
-                        const itemsTable = createItemsTable(displayData, 'Items');
-                        resultContainer.appendChild(itemsTable);
-                    } else {
-                        // Simple array of primitives
-                        const pre = document.createElement('pre');
-                        pre.textContent = JSON.stringify(displayData, null, 2);
-                        pre.style.margin = '0';
-                        pre.style.whiteSpace = 'pre-wrap';
-                        resultContainer.appendChild(pre);
-                    }
-                } else {
-                    // Fallback: show as JSON
-                    const pre = document.createElement('pre');
-                    pre.textContent = JSON.stringify(displayData, null, 2);
-                    pre.style.margin = '0';
-                    pre.style.whiteSpace = 'pre-wrap';
-                    resultContainer.appendChild(pre);
-                }
+                // Render the data
+                resultContainer.innerHTML = buildUnifiedTable(extractedData);
             }
             
             if (resultSection) {
