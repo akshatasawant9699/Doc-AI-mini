@@ -9,131 +9,73 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from api.utils import create_response
 
 def generate_multi_invoice_schema():
-    """Generate comprehensive schema for combined/multi-invoice documents (50+ form types, 10-30+ pages)"""
+    """Generate Salesforce benchpress-style schema for combined/multi-invoice documents"""
+    # Use the exact format that works with Salesforce Document AI API
+    # This matches the successful benchpress_request.json format
     return {
-        "type": "object",
-        "description": "Schema for extracting multiple invoices from combined documents",
+        "type": "combined_invoice_document",
+        "extractionMode": "multi_document",
         "properties": {
-            "documents": {
+            "invoices": {
                 "type": "array",
-                "description": "Array of extracted invoices/documents from the combined file",
                 "items": {
                     "type": "object",
                     "properties": {
-                        # Document Metadata
-                        "document_type": {"type": "string", "description": "Type of document (Invoice, Credit Note, Debit Note, Receipt, etc.)"},
-                        "page_number": {"type": "integer", "description": "Page number in the combined document"},
-                        "document_id": {"type": "string", "description": "Unique identifier for this document within the batch"},
-                        
-                        # Invoice Header
-                        "invoice_number": {"type": "string", "description": "Unique invoice number/ID"},
-                        "invoice_date": {"type": "string", "description": "Date the invoice was issued"},
-                        "due_date": {"type": "string", "description": "Payment due date"},
-                        "purchase_order_number": {"type": "string", "description": "Associated purchase order number"},
-                        "sales_order_number": {"type": "string", "description": "Sales order reference number"},
-                        "account_number": {"type": "string", "description": "Customer account number"},
-                        "reference_number": {"type": "string", "description": "Additional reference number"},
-                        "invoice_type": {"type": "string", "description": "Type (Standard, Proforma, Commercial, etc.)"},
-                        
-                        # Vendor Information
-                        "vendor_name": {"type": "string", "description": "Seller/Vendor company name"},
-                        "vendor_address": {"type": "string", "description": "Complete vendor address"},
-                        "vendor_city": {"type": "string", "description": "Vendor city"},
-                        "vendor_state": {"type": "string", "description": "Vendor state/province"},
-                        "vendor_zip_code": {"type": "string", "description": "Vendor postal/ZIP code"},
-                        "vendor_country": {"type": "string", "description": "Vendor country"},
-                        "vendor_phone": {"type": "string", "description": "Vendor phone number"},
-                        "vendor_email": {"type": "string", "description": "Vendor email address"},
-                        "vendor_tax_id": {"type": "string", "description": "Vendor Tax ID / EIN / VAT number"},
-                        
-                        # Customer Information
-                        "customer_name": {"type": "string", "description": "Buyer/Customer company name"},
-                        "customer_id": {"type": "string", "description": "Customer ID/Number"},
-                        "customer_address": {"type": "string", "description": "Complete customer address"},
-                        "customer_city": {"type": "string", "description": "Customer city"},
-                        "customer_state": {"type": "string", "description": "Customer state/province"},
-                        "customer_zip_code": {"type": "string", "description": "Customer postal/ZIP code"},
-                        "customer_country": {"type": "string", "description": "Customer country"},
-                        "customer_phone": {"type": "string", "description": "Customer phone number"},
-                        "customer_email": {"type": "string", "description": "Customer email address"},
-                        
-                        # Billing Address
-                        "bill_to_name": {"type": "string", "description": "Bill To company/person name"},
-                        "bill_to_address": {"type": "string", "description": "Complete billing address"},
-                        "bill_to_city": {"type": "string", "description": "Bill To city"},
-                        "bill_to_state": {"type": "string", "description": "Bill To state/province"},
-                        "bill_to_zip_code": {"type": "string", "description": "Bill To postal/ZIP code"},
-                        
-                        # Shipping Address
-                        "ship_to_name": {"type": "string", "description": "Ship To company/person name"},
-                        "ship_to_address": {"type": "string", "description": "Complete shipping address"},
-                        "ship_to_city": {"type": "string", "description": "Ship To city"},
-                        "ship_to_state": {"type": "string", "description": "Ship To state/province"},
-                        "ship_to_zip_code": {"type": "string", "description": "Ship To postal/ZIP code"},
-                        
-                        # Shipping Details
-                        "shipping_method": {"type": "string", "description": "Shipping carrier/method"},
-                        "tracking_number": {"type": "string", "description": "Shipment tracking number"},
-                        "ship_date": {"type": "string", "description": "Date items were shipped"},
-                        
-                        # Line Items
+                        "document_type": {"type": "string"},
+                        "page_range": {"type": "string"},
+                        "invoice_number": {"type": "string"},
+                        "invoice_date": {"type": "string"},
+                        "due_date": {"type": "string"},
+                        "purchase_order_number": {"type": "string"},
+                        "account_number": {"type": "string"},
+                        "vendor_name": {"type": "string"},
+                        "vendor_address": {"type": "string"},
+                        "vendor_city": {"type": "string"},
+                        "vendor_state": {"type": "string"},
+                        "vendor_zip_code": {"type": "string"},
+                        "vendor_phone": {"type": "string"},
+                        "vendor_email": {"type": "string"},
+                        "customer_name": {"type": "string"},
+                        "customer_address": {"type": "string"},
+                        "customer_city": {"type": "string"},
+                        "customer_state": {"type": "string"},
+                        "customer_zip_code": {"type": "string"},
+                        "bill_to_name": {"type": "string"},
+                        "bill_to_address": {"type": "string"},
+                        "ship_to_name": {"type": "string"},
+                        "ship_to_address": {"type": "string"},
                         "line_items": {
                             "type": "array",
-                            "description": "List of invoice line items",
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "line_number": {"type": "integer", "description": "Line item sequence number"},
-                                    "item_code": {"type": "string", "description": "Item code/SKU/Part number"},
-                                    "item_description": {"type": "string", "description": "Item description"},
-                                    "quantity": {"type": "number", "description": "Quantity ordered/shipped"},
-                                    "unit_of_measure": {"type": "string", "description": "Unit of measure (EA, BOX, LB, etc.)"},
-                                    "unit_price": {"type": "number", "description": "Price per unit"},
-                                    "discount_percent": {"type": "number", "description": "Discount percentage"},
-                                    "discount_amount": {"type": "number", "description": "Discount amount"},
-                                    "tax_amount": {"type": "number", "description": "Tax amount for line"},
-                                    "line_total": {"type": "number", "description": "Final line total"}
+                                    "line_number": {"type": "number"},
+                                    "item_code": {"type": "string"},
+                                    "item_description": {"type": "string"},
+                                    "quantity": {"type": "number"},
+                                    "unit_price": {"type": "number"},
+                                    "line_total": {"type": "number"}
                                 }
                             }
                         },
-                        
-                        # Financial Summary
-                        "currency_code": {"type": "string", "description": "Currency code (USD, EUR, GBP, etc.)"},
-                        "subtotal": {"type": "number", "description": "Subtotal before tax and adjustments"},
-                        "discount_total": {"type": "number", "description": "Total discounts applied"},
-                        "taxable_amount": {"type": "number", "description": "Total taxable amount"},
-                        "sales_tax": {"type": "number", "description": "Sales tax amount"},
-                        "vat_amount": {"type": "number", "description": "VAT amount"},
-                        "tax_total": {"type": "number", "description": "Total tax amount"},
-                        "shipping_cost": {"type": "number", "description": "Shipping charges"},
-                        "handling_fee": {"type": "number", "description": "Handling fees"},
-                        "total_amount": {"type": "number", "description": "Total invoice amount"},
-                        "amount_paid": {"type": "number", "description": "Amount already paid"},
-                        "balance_due": {"type": "number", "description": "Balance remaining due"},
-                        
-                        # Payment Information
-                        "payment_terms": {"type": "string", "description": "Payment terms (Net 30, 2/10 Net 30, etc.)"},
-                        "payment_method": {"type": "string", "description": "Accepted payment methods"},
-                        "bank_name": {"type": "string", "description": "Bank name for wire transfer"},
-                        "bank_account_number": {"type": "string", "description": "Bank account number"},
-                        "bank_routing_number": {"type": "string", "description": "ABA routing number"},
-                        
-                        # Additional Information
-                        "notes": {"type": "string", "description": "Invoice notes/comments"},
-                        "special_instructions": {"type": "string", "description": "Special handling instructions"},
-                        "sales_rep": {"type": "string", "description": "Sales representative name"},
-                        "approved_by": {"type": "string", "description": "Approval signature/name"}
+                        "currency_code": {"type": "string"},
+                        "subtotal": {"type": "number"},
+                        "tax_total": {"type": "number"},
+                        "shipping_cost": {"type": "number"},
+                        "total_amount": {"type": "number"},
+                        "amount_paid": {"type": "number"},
+                        "balance_due": {"type": "number"},
+                        "payment_terms": {"type": "string"},
+                        "notes": {"type": "string"}
                     }
                 }
             },
-            "extraction_summary": {
+            "document_summary": {
                 "type": "object",
-                "description": "Summary of the extraction",
                 "properties": {
-                    "total_documents_found": {"type": "integer", "description": "Total number of documents extracted"},
-                    "total_pages_processed": {"type": "integer", "description": "Total pages in the combined document"},
-                    "document_types_found": {"type": "array", "items": {"type": "string"}, "description": "Types of documents found"},
-                    "grand_total": {"type": "number", "description": "Sum of all invoice totals"}
+                    "total_invoices_found": {"type": "number"},
+                    "total_pages_processed": {"type": "number"},
+                    "grand_total_amount": {"type": "number"}
                 }
             }
         }

@@ -551,21 +551,11 @@ async function handleProcessDocument() {
                 // Clear previous content
                 resultContainer.innerHTML = '';
                 
-                // Unwrap nested data structures
+                // Process the extracted data
                 let displayData = extractedData;
                 
-                // Handle common wrapper structures
-                if (displayData && typeof displayData === 'object') {
-                    if (Array.isArray(displayData) && displayData.length === 1) {
-                        displayData = displayData[0];
-                    }
-                    if (displayData.documents && Array.isArray(displayData.documents) && displayData.documents.length > 0) {
-                        displayData = displayData.documents[0];
-                    }
-                    if (displayData.data && typeof displayData.data === 'object' && !Array.isArray(displayData.data)) {
-                        displayData = displayData.data;
-                    }
-                }
+                // Log raw data for debugging
+                console.log('Raw extracted data:', JSON.stringify(extractedData, null, 2).substring(0, 2000));
                 
                 // Helper function: Extract value from {type, value, confidence} structure
                 function extractValue(val) {
@@ -578,9 +568,14 @@ async function handleProcessDocument() {
                     return val;
                 }
                 
-                // Helper function: Extract confidence score from {value, confidence} structure
+                // Helper function: Extract confidence score from {value, confidence_score} or {value, confidence} structure
                 function extractConfidence(val) {
                     if (val && typeof val === 'object' && !Array.isArray(val)) {
+                        // Check for confidence_score first (Salesforce Document AI format)
+                        if ('confidence_score' in val) {
+                            return val.confidence_score;
+                        }
+                        // Fallback to confidence
                         if ('confidence' in val) {
                             return val.confidence;
                         }
@@ -963,32 +958,180 @@ async function handleProcessDocument() {
                     return wrapper;
                 }
                 
-                // Process the data
-                if (displayData && typeof displayData === 'object' && !Array.isArray(displayData)) {
-                    const keys = Object.keys(displayData);
+                // Helper function: Create invoice card with all fields
+                function createInvoiceCard(invoiceData, index) {
+                    const card = document.createElement('div');
+                    card.style.cssText = 'border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);';
                     
-                    if (keys.length === 0) {
-                        resultContainer.innerHTML = '<p style="color: #666; text-align: center;">No data extracted from document.</p>';
-                    } else {
-                        // Create main table for simple fields
-                        const mainTable = createKeyValueTable(displayData, 'Extracted Data');
-                        resultContainer.appendChild(mainTable);
+                    // Card header
+                    const header = document.createElement('div');
+                    header.style.cssText = 'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 20px; font-weight: 600; font-size: 16px;';
+                    
+                    // Get invoice number for header
+                    const invoiceNum = extractValue(invoiceData.invoice_number) || `Document ${index + 1}`;
+                    const docType = extractValue(invoiceData.document_type) || 'Invoice';
+                    header.textContent = `${docType} #${index + 1}: ${invoiceNum}`;
+                    card.appendChild(header);
+                    
+                    // Card body
+                    const body = document.createElement('div');
+                    body.style.cssText = 'padding: 20px;';
+                    
+                    // Create table for this invoice's fields
+                    const table = document.createElement('table');
+                    table.className = 'results-table';
+                    table.style.cssText = 'width: 100%; border-collapse: collapse;';
+                    
+                    const thead = document.createElement('thead');
+                    const headerRow = document.createElement('tr');
+                    ['Field', 'Value', 'Confidence'].forEach(text => {
+                        const th = document.createElement('th');
+                        th.textContent = text;
+                        th.style.cssText = 'background: #f5f5f5; padding: 10px; text-align: left; border-bottom: 2px solid #ddd; font-weight: 600;';
+                        if (text === 'Confidence') th.style.width = '100px';
+                        headerRow.appendChild(th);
+                    });
+                    thead.appendChild(headerRow);
+                    table.appendChild(thead);
+                    
+                    const tbody = document.createElement('tbody');
+                    let lineItemsData = null;
+                    
+                    // Process each field
+                    Object.entries(invoiceData).forEach(([key, rawValue], idx) => {
+                        // Check for line_items - handle separately
+                        if (key === 'line_items') {
+                            lineItemsData = getNestedArray(rawValue) || extractValue(rawValue);
+                            return;
+                        }
                         
-                        // Create separate tables for nested arrays and objects
-                        for (const key of keys) {
-                            const rawValue = displayData[key];
-                            const value = extractValue(rawValue);
+                        const value = extractValue(rawValue);
+                        const confidence = extractConfidence(rawValue);
+                        
+                        // Skip null values for cleaner display
+                        if (value === null || value === 'null' || value === undefined) return;
+                        
+                        const row = document.createElement('tr');
+                        row.style.background = idx % 2 === 0 ? '#fafafa' : '#ffffff';
+                        
+                        const tdKey = document.createElement('td');
+                        tdKey.textContent = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        tdKey.style.cssText = 'padding: 10px; border-bottom: 1px solid #eee; font-weight: 500; color: #333;';
+                        
+                        const tdValue = document.createElement('td');
+                        tdValue.style.cssText = 'padding: 10px; border-bottom: 1px solid #eee;';
+                        if (typeof value === 'object') {
+                            tdValue.textContent = JSON.stringify(value);
+                            tdValue.style.fontFamily = 'monospace';
+                            tdValue.style.fontSize = '12px';
+                        } else {
+                            tdValue.textContent = String(value);
+                        }
+                        
+                        const tdConfidence = document.createElement('td');
+                        tdConfidence.style.cssText = 'padding: 10px; border-bottom: 1px solid #eee; text-align: center;';
+                        const badge = createConfidenceBadge(confidence);
+                        if (badge) {
+                            tdConfidence.appendChild(badge);
+                        } else {
+                            tdConfidence.textContent = '-';
+                            tdConfidence.style.color = '#999';
+                        }
+                        
+                        row.appendChild(tdKey);
+                        row.appendChild(tdValue);
+                        row.appendChild(tdConfidence);
+                        tbody.appendChild(row);
+                    });
+                    
+                    table.appendChild(tbody);
+                    body.appendChild(table);
+                    
+                    // Add line items if present
+                    if (lineItemsData && Array.isArray(lineItemsData) && lineItemsData.length > 0) {
+                        const lineItemsSection = document.createElement('div');
+                        lineItemsSection.style.cssText = 'margin-top: 20px;';
+                        
+                        const lineItemsTitle = document.createElement('h5');
+                        lineItemsTitle.textContent = `Line Items (${lineItemsData.length})`;
+                        lineItemsTitle.style.cssText = 'margin: 0 0 10px 0; color: #667eea; border-bottom: 2px solid #667eea; padding-bottom: 5px;';
+                        lineItemsSection.appendChild(lineItemsTitle);
+                        
+                        const lineItemsTable = createItemsTable(lineItemsData, '');
+                        lineItemsSection.appendChild(lineItemsTable);
+                        body.appendChild(lineItemsSection);
+                    }
+                    
+                    card.appendChild(body);
+                    return card;
+                }
+                
+                // Process the data - handle invoices array structure
+                if (displayData && typeof displayData === 'object') {
+                    // Check for invoices array (the benchpress format)
+                    let invoicesArray = null;
+                    let documentSummary = null;
+                    
+                    // Try to find invoices or documents array
+                    if (displayData.invoices) {
+                        invoicesArray = getNestedArray(displayData.invoices) || extractValue(displayData.invoices);
+                    }
+                    if (displayData.documents) {
+                        invoicesArray = getNestedArray(displayData.documents) || extractValue(displayData.documents);
+                    }
+                    if (displayData.document_summary) {
+                        documentSummary = extractValue(displayData.document_summary) || displayData.document_summary;
+                    }
+                    if (displayData.extraction_summary) {
+                        documentSummary = extractValue(displayData.extraction_summary) || displayData.extraction_summary;
+                    }
+                    
+                    // If we found an invoices/documents array, display each one
+                    if (invoicesArray && Array.isArray(invoicesArray) && invoicesArray.length > 0) {
+                        // Summary header
+                        const summaryDiv = document.createElement('div');
+                        summaryDiv.style.cssText = 'background: #e3f2fd; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px;';
+                        summaryDiv.innerHTML = `<strong>Extracted ${invoicesArray.length} document(s)</strong> from the combined file.`;
+                        resultContainer.appendChild(summaryDiv);
+                        
+                        // Create a card for each invoice
+                        invoicesArray.forEach((invoice, idx) => {
+                            const card = createInvoiceCard(invoice, idx);
+                            resultContainer.appendChild(card);
+                        });
+                        
+                        // Show document summary if available
+                        if (documentSummary && typeof documentSummary === 'object') {
+                            const summaryTable = createNestedObjectTable(documentSummary, 'Document Summary');
+                            resultContainer.appendChild(summaryTable);
+                        }
+                    } else {
+                        // Fallback: show as key-value table for single document
+                        const keys = Object.keys(displayData);
+                        
+                        if (keys.length === 0) {
+                            resultContainer.innerHTML = '<p style="color: #666; text-align: center;">No data extracted from document.</p>';
+                        } else {
+                            // Create main table for simple fields
+                            const mainTable = createKeyValueTable(displayData, 'Extracted Data');
+                            resultContainer.appendChild(mainTable);
                             
-                            // Handle nested arrays (Items, line items, etc.)
-                            const nestedArr = getNestedArray(rawValue) || getNestedArray(value);
-                            if (nestedArr && nestedArr.length > 0 && typeof nestedArr[0] === 'object') {
-                                const itemsTable = createItemsTable(nestedArr, key);
-                                resultContainer.appendChild(itemsTable);
-                            }
-                            // Handle nested objects
-                            else if (isNestedObject(value)) {
-                                const nestedTable = createNestedObjectTable(value, key);
-                                resultContainer.appendChild(nestedTable);
+                            // Create separate tables for nested arrays and objects
+                            for (const key of keys) {
+                                const rawValue = displayData[key];
+                                const value = extractValue(rawValue);
+                                
+                                // Handle nested arrays (Items, line items, etc.)
+                                const nestedArr = getNestedArray(rawValue) || getNestedArray(value);
+                                if (nestedArr && nestedArr.length > 0 && typeof nestedArr[0] === 'object') {
+                                    const itemsTable = createItemsTable(nestedArr, key);
+                                    resultContainer.appendChild(itemsTable);
+                                }
+                                // Handle nested objects
+                                else if (isNestedObject(value)) {
+                                    const nestedTable = createNestedObjectTable(value, key);
+                                    resultContainer.appendChild(nestedTable);
+                                }
                             }
                         }
                     }
