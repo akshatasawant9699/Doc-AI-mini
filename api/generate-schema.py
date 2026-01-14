@@ -9,73 +9,74 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from api.utils import create_response
 
 def generate_multi_invoice_schema():
-    """Generate Salesforce benchpress-style schema for combined/multi-invoice documents"""
-    # Use the exact format that works with Salesforce Document AI API
-    # This matches the successful benchpress_request.json format
+    """Generate standard JSON Schema for combined/multi-invoice documents"""
+    # Salesforce Document AI requires standard JSON Schema with type: "object" at root
     return {
-        "type": "combined_invoice_document",
-        "extractionMode": "multi_document",
+        "type": "object",
         "properties": {
             "invoices": {
                 "type": "array",
+                "description": "Array of invoices extracted from the combined document",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "document_type": {"type": "string"},
-                        "page_range": {"type": "string"},
-                        "invoice_number": {"type": "string"},
-                        "invoice_date": {"type": "string"},
-                        "due_date": {"type": "string"},
-                        "purchase_order_number": {"type": "string"},
-                        "account_number": {"type": "string"},
-                        "vendor_name": {"type": "string"},
-                        "vendor_address": {"type": "string"},
-                        "vendor_city": {"type": "string"},
-                        "vendor_state": {"type": "string"},
-                        "vendor_zip_code": {"type": "string"},
-                        "vendor_phone": {"type": "string"},
-                        "vendor_email": {"type": "string"},
-                        "customer_name": {"type": "string"},
-                        "customer_address": {"type": "string"},
-                        "customer_city": {"type": "string"},
-                        "customer_state": {"type": "string"},
-                        "customer_zip_code": {"type": "string"},
-                        "bill_to_name": {"type": "string"},
-                        "bill_to_address": {"type": "string"},
-                        "ship_to_name": {"type": "string"},
-                        "ship_to_address": {"type": "string"},
+                        "document_type": {"type": "string", "description": "Type of document"},
+                        "page_range": {"type": "string", "description": "Page numbers in source document"},
+                        "invoice_number": {"type": "string", "description": "Invoice number"},
+                        "invoice_date": {"type": "string", "description": "Invoice date"},
+                        "due_date": {"type": "string", "description": "Payment due date"},
+                        "purchase_order_number": {"type": "string", "description": "PO number"},
+                        "account_number": {"type": "string", "description": "Account number"},
+                        "vendor_name": {"type": "string", "description": "Vendor/Seller name"},
+                        "vendor_address": {"type": "string", "description": "Vendor address"},
+                        "vendor_city": {"type": "string", "description": "Vendor city"},
+                        "vendor_state": {"type": "string", "description": "Vendor state"},
+                        "vendor_zip_code": {"type": "string", "description": "Vendor ZIP code"},
+                        "vendor_phone": {"type": "string", "description": "Vendor phone"},
+                        "vendor_email": {"type": "string", "description": "Vendor email"},
+                        "customer_name": {"type": "string", "description": "Customer name"},
+                        "customer_address": {"type": "string", "description": "Customer address"},
+                        "customer_city": {"type": "string", "description": "Customer city"},
+                        "customer_state": {"type": "string", "description": "Customer state"},
+                        "customer_zip_code": {"type": "string", "description": "Customer ZIP"},
+                        "bill_to_name": {"type": "string", "description": "Bill to name"},
+                        "bill_to_address": {"type": "string", "description": "Bill to address"},
+                        "ship_to_name": {"type": "string", "description": "Ship to name"},
+                        "ship_to_address": {"type": "string", "description": "Ship to address"},
                         "line_items": {
                             "type": "array",
+                            "description": "Line items on the invoice",
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "line_number": {"type": "number"},
-                                    "item_code": {"type": "string"},
-                                    "item_description": {"type": "string"},
-                                    "quantity": {"type": "number"},
-                                    "unit_price": {"type": "number"},
-                                    "line_total": {"type": "number"}
+                                    "line_number": {"type": "number", "description": "Line number"},
+                                    "item_code": {"type": "string", "description": "Item code/SKU"},
+                                    "item_description": {"type": "string", "description": "Item description"},
+                                    "quantity": {"type": "number", "description": "Quantity"},
+                                    "unit_price": {"type": "number", "description": "Unit price"},
+                                    "line_total": {"type": "number", "description": "Line total"}
                                 }
                             }
                         },
-                        "currency_code": {"type": "string"},
-                        "subtotal": {"type": "number"},
-                        "tax_total": {"type": "number"},
-                        "shipping_cost": {"type": "number"},
-                        "total_amount": {"type": "number"},
-                        "amount_paid": {"type": "number"},
-                        "balance_due": {"type": "number"},
-                        "payment_terms": {"type": "string"},
-                        "notes": {"type": "string"}
+                        "currency_code": {"type": "string", "description": "Currency code"},
+                        "subtotal": {"type": "number", "description": "Subtotal amount"},
+                        "tax_total": {"type": "number", "description": "Tax amount"},
+                        "shipping_cost": {"type": "number", "description": "Shipping cost"},
+                        "total_amount": {"type": "number", "description": "Total amount"},
+                        "amount_paid": {"type": "number", "description": "Amount paid"},
+                        "balance_due": {"type": "number", "description": "Balance due"},
+                        "payment_terms": {"type": "string", "description": "Payment terms"},
+                        "notes": {"type": "string", "description": "Notes or comments"}
                     }
                 }
             },
             "document_summary": {
                 "type": "object",
+                "description": "Summary of extracted documents",
                 "properties": {
-                    "total_invoices_found": {"type": "number"},
-                    "total_pages_processed": {"type": "number"},
-                    "grand_total_amount": {"type": "number"}
+                    "total_invoices_found": {"type": "number", "description": "Number of invoices found"},
+                    "total_pages_processed": {"type": "number", "description": "Total pages processed"},
+                    "grand_total_amount": {"type": "number", "description": "Sum of all invoice totals"}
                 }
             }
         }
